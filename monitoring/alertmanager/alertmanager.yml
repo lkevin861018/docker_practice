@@ -1,0 +1,18 @@
+# Default laboratory mode: messages are captured only by the local Mailpit container.
+# No message is delivered to a real external mailbox.
+global:
+  resolve_timeout: 5m
+route:
+  receiver: mailpit-lab
+  group_by: ['alertname', 'job']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+receivers:
+  - name: mailpit-lab
+    email_configs:
+      - to: 'lab-alerts@example.invalid'
+        from: 'docker-lab@example.invalid'
+        smarthost: 'mailpit:1025'
+        require_tls: false  # Only for local Mailpit; DO NOT use this for internet SMTP.
+        send_resolved: true

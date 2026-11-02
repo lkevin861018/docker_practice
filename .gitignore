@@ -1,0 +1,21 @@
+.env
+backups/
+__pycache__/
+*.pyc
+monitoring/*.tmp
+
+# SMTP credentials must never enter version control.
+monitoring/alertmanager/secrets/*
+!monitoring/alertmanager/secrets/.gitkeep
+
+# v6 scanning outputs and optional Compose secret file
+reports/
+secrets/*
+!secrets/.gitkeep
+
+# v7 CI/CD generated files, reports, and deployment state
+.env.ci
+ci-artifacts/
+.trivy-cache/
+.ci-last-good-image
+*.tar

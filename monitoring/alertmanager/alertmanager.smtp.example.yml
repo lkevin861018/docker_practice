@@ -1,0 +1,21 @@
+# Real SMTP optional profile. Copy this file to alertmanager.yml only AFTER
+# configuring a real SMTP server, sender/recipient and private password file.
+# Use TLS for real external mail; see README.
+global:
+  resolve_timeout: 5m
+  smtp_smarthost: 'smtp.example.com:587'    # Replace with your provider's SMTP host/port
+  smtp_from: 'alerts@example.com'         # Replace with an authorized sender
+  smtp_auth_username: 'alerts@example.com' # Replace if provider uses another login
+  smtp_auth_password_file: '/etc/alertmanager/secrets/smtp_password.txt'
+  smtp_require_tls: true
+route:
+  receiver: external-email
+  group_by: ['alertname', 'job']
+  group_wait: 10s
+  group_interval: 1m
+  repeat_interval: 4h
+receivers:
+  - name: external-email
+    email_configs:
+      - to: 'operator@example.com'        # Replace with your real recipient
+        send_resolved: true

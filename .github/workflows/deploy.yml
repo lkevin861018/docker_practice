@@ -1,0 +1,57 @@
+name: CD - manually approved app-only deploy
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_sha:
+        description: 'Full 40-character SHA published by the CI workflow on main'
+        required: true
+        type: string
+
+permissions:
+  contents: read
+
+concurrency:
+  group: production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy-app:
+    runs-on: ubuntu-latest
+    environment: production
+    timeout-minutes: 15
+    env:
+      DEPLOY_HOST: ${{ vars.DEPLOY_HOST }}
+      DEPLOY_USER: ${{ vars.DEPLOY_USER }}
+      SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+      SSH_KNOWN_HOSTS: ${{ secrets.SSH_KNOWN_HOSTS }}
+      SOURCE_REPOSITORY: ${{ github.repository }}
+      IMAGE_SHA: ${{ inputs.image_sha }}
+    steps:
+      - name: Validate deployment inputs and configure verified SSH host key
+        shell: bash
+        run: |
+          set -euo pipefail
+          [[ "$IMAGE_SHA" =~ ^[a-fA-F0-9]{40}$ ]] || { echo 'image_sha must be a full commit SHA' >&2; exit 1; }
+          [[ "$DEPLOY_HOST" =~ ^[A-Za-z0-9._-]+$ ]] || { echo 'Invalid DEPLOY_HOST' >&2; exit 1; }
+          [[ "$DEPLOY_USER" =~ ^[A-Za-z_][A-Za-z0-9_-]*$ ]] || { echo 'Invalid DEPLOY_USER' >&2; exit 1; }
+          [ -n "$SSH_PRIVATE_KEY" ] && [ -n "$SSH_KNOWN_HOSTS" ] || { echo 'Missing SSH secrets' >&2; exit 1; }
+          mkdir -p "$HOME/.ssh"
+          chmod 700 "$HOME/.ssh"
+          printf '%s\n' "$SSH_PRIVATE_KEY" > "$HOME/.ssh/deploy_key"
+          chmod 600 "$HOME/.ssh/deploy_key"
+          printf '%s\n' "$SSH_KNOWN_HOSTS" > "$HOME/.ssh/known_hosts"
+          chmod 600 "$HOME/.ssh/known_hosts"
+
+      - name: Pull and deploy only Flask on pre-provisioned Ubuntu server
+        shell: bash
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${SOURCE_REPOSITORY,,}/flask-app:${IMAGE_SHA,,}"
+          # image contains only validated GitHub repository name and hexadecimal SHA.
+          ssh -i "$HOME/.ssh/deploy_key" \
+            -o BatchMode=yes -o StrictHostKeyChecking=yes \
+            -o UserKnownHostsFile="$HOME/.ssh/known_hosts" \
+            "${DEPLOY_USER}@${DEPLOY_HOST}" \
+            "bash /opt/docker-lab/ci/deploy/remote-deploy.sh '$image'"
+          echo "Deployed: $image" >> "$GITHUB_STEP_SUMMARY"

@@ -1,0 +1,277 @@
+name: flask-nginx-postgres-lab
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      POSTGRES_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+    volumes:
+    - postgres_data:/var/lib/postgresql/data
+    - ./db/01-init.sql:/docker-entrypoint-initdb.d/01-init.sql:ro
+    - ./db/maintenance.sh:/opt/lab/maintenance.sh:ro
+    networks:
+    - backend
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - pg_isready -U "$${POSTGRES_USER}" -d "$${POSTGRES_DB}"
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 20s
+  app:
+    build:
+      context: ./app
+    restart: unless-stopped
+    environment:
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      DB_USER: ${APP_DB_USER:?Set APP_DB_USER in .env}
+      DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+    - frontend
+    - backend
+    - monitoring
+    healthcheck:
+      test:
+      - CMD
+      - python
+      - -c
+      - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/healthz', timeout=3).read()
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 10s
+    image: flask-nginx-postgres-lab-app:v6
+    read_only: true
+    tmpfs:
+    - /tmp:rw,nosuid,noexec,size=64m
+    cap_drop:
+    - ALL
+    security_opt:
+    - no-new-privileges:true
+    pids_limit: 128
+    mem_limit: 512m
+  nginx:
+    image: nginx:stable-alpine
+    restart: unless-stopped
+    ports:
+    - 127.0.0.1:${WEB_PORT:-8080}:80
+    volumes:
+    - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      app:
+        condition: service_healthy
+    networks:
+    - frontend
+    healthcheck:
+      test:
+      - CMD-SHELL
+      - wget -q -O /dev/null http://127.0.0.1/healthz || exit 1
+      interval: 10s
+      timeout: 5s
+      retries: 5
+  pgadmin:
+    image: dpage/pgadmin4:9.19
+    restart: unless-stopped
+    ports:
+    - 127.0.0.1:${PGADMIN_PORT:-5050}:80
+    environment:
+      PGADMIN_DEFAULT_EMAIL: ${PGADMIN_DEFAULT_EMAIL:?Set PGADMIN_DEFAULT_EMAIL in .env}
+      PGADMIN_DEFAULT_PASSWORD: ${PGADMIN_DEFAULT_PASSWORD:?Set PGADMIN_DEFAULT_PASSWORD in .env}
+      PGADMIN_DISABLE_POSTFIX: '1'
+      PGADMIN_CONFIG_ENHANCED_COOKIE_PROTECTION: 'True'
+    volumes:
+    - pgadmin_data:/var/lib/pgadmin
+    - ./pgadmin/servers.json:/pgadmin4/servers.json:ro
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+    - backend
+    - admin
+  db-setup:
+    profiles:
+    - maintenance
+    build:
+      context: ./app
+    command:
+    - python
+    - provision_roles.py
+    restart: 'no'
+    environment:
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      DB_ADMIN_USER: ${POSTGRES_USER:?Set POSTGRES_USER in .env}
+      DB_ADMIN_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env}
+      APP_DB_USER: ${APP_DB_USER:?Set APP_DB_USER in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+      REPORT_DB_USER: ${REPORT_DB_USER:?Set REPORT_DB_USER in .env}
+      REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD:?Set REPORT_DB_PASSWORD in .env}
+      METRICS_DB_USER: ${METRICS_DB_USER:?Set METRICS_DB_USER in .env}
+      METRICS_DB_PASSWORD: ${METRICS_DB_PASSWORD:?Set METRICS_DB_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+    - backend
+  db-check:
+    profiles:
+    - maintenance
+    build:
+      context: ./app
+    command:
+    - python
+    - verify_roles.py
+    restart: 'no'
+    environment:
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_NAME: ${POSTGRES_DB:?Set POSTGRES_DB in .env}
+      APP_DB_USER: ${APP_DB_USER:?Set APP_DB_USER in .env}
+      APP_DB_PASSWORD: ${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env}
+      REPORT_DB_USER: ${REPORT_DB_USER:?Set REPORT_DB_USER in .env}
+      REPORT_DB_PASSWORD: ${REPORT_DB_PASSWORD:?Set REPORT_DB_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+    - backend
+  nginx-exporter:
+    image: nginx/nginx-prometheus-exporter:1.5.3
+    restart: unless-stopped
+    command:
+    - --nginx.scrape-uri=http://nginx:8081/stub_status
+    depends_on:
+      nginx:
+        condition: service_healthy
+    networks:
+    - frontend
+    - monitoring
+  postgres-exporter:
+    image: quay.io/prometheuscommunity/postgres-exporter:v0.20.1
+    restart: unless-stopped
+    environment:
+      DATA_SOURCE_URI: db:5432/${POSTGRES_DB:?Set POSTGRES_DB in .env}?sslmode=disable
+      DATA_SOURCE_USER: ${METRICS_DB_USER:?Set METRICS_DB_USER in .env}
+      DATA_SOURCE_PASS: ${METRICS_DB_PASSWORD:?Set METRICS_DB_PASSWORD in .env}
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+    - backend
+    - monitoring
+  blackbox-exporter:
+    image: prom/blackbox-exporter:v0.29.1
+    restart: unless-stopped
+    command:
+    - --config.file=/etc/blackbox/blackbox.yml
+    volumes:
+    - ./monitoring/blackbox/blackbox.yml:/etc/blackbox/blackbox.yml:ro
+    networks:
+    - frontend
+    - admin
+    - monitoring
+  prometheus:
+    image: prom/prometheus:v3.13.3
+    restart: unless-stopped
+    command:
+    - --config.file=/etc/prometheus/prometheus.yml
+    - --storage.tsdb.path=/prometheus
+    - --storage.tsdb.retention.time=7d
+    - --web.listen-address=0.0.0.0:9090
+    ports:
+    - 127.0.0.1:${PROMETHEUS_PORT:-9090}:9090
+    volumes:
+    - ./monitoring/prometheus/prometheus.yml:/etc/prometheus/prometheus.yml:ro
+    - ./monitoring/prometheus/alerts.yml:/etc/prometheus/alerts.yml:ro
+    - prometheus_data:/prometheus
+    networks:
+    - monitoring
+  grafana:
+    image: grafana/grafana:13.3.0
+    restart: unless-stopped
+    ports:
+    - 127.0.0.1:${GRAFANA_PORT:-3000}:3000
+    environment:
+      GF_SECURITY_ADMIN_USER: ${GRAFANA_ADMIN_USER:?Set GRAFANA_ADMIN_USER in .env}
+      GF_SECURITY_ADMIN_PASSWORD: ${GRAFANA_ADMIN_PASSWORD:?Set GRAFANA_ADMIN_PASSWORD in .env}
+      GF_USERS_ALLOW_SIGN_UP: 'false'
+      GF_ANALYTICS_REPORTING_ENABLED: 'false'
+    volumes:
+    - grafana_data:/var/lib/grafana
+    - ./monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+    - ./monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    depends_on:
+    - prometheus
+    networks:
+    - monitoring
+  cadvisor:
+    profiles:
+    - cadvisor
+    image: ghcr.io/google/cadvisor:v0.60.6
+    restart: unless-stopped
+    privileged: true
+    volumes:
+    - /:/rootfs:ro
+    - /var/run:/var/run:ro
+    - /sys:/sys:ro
+    - /var/lib/docker:/var/lib/docker:ro
+    networks:
+    - monitoring
+  mailpit:
+    image: axllent/mailpit:v1.32.0
+    restart: unless-stopped
+    ports:
+    - 127.0.0.1:${MAILPIT_UI_PORT:-8025}:8025
+    environment:
+      MP_DATABASE: /data/mailpit.db
+      MP_MAX_MESSAGES: '500'
+    volumes:
+    - mailpit_data:/data
+    networks:
+    - alerts
+  alertmanager:
+    image: prom/alertmanager:v0.34.2
+    restart: unless-stopped
+    command:
+    - --config.file=/etc/alertmanager/alertmanager.yml
+    - --storage.path=/alertmanager
+    - --web.listen-address=0.0.0.0:9093
+    ports:
+    - 127.0.0.1:${ALERTMANAGER_PORT:-9093}:9093
+    volumes:
+    - ./monitoring/alertmanager/alertmanager.yml:/etc/alertmanager/alertmanager.yml:ro
+    - ./monitoring/alertmanager/secrets:/etc/alertmanager/secrets:ro
+    - alertmanager_data:/alertmanager
+    depends_on:
+    - mailpit
+    networks:
+    - monitoring
+    - alerts
+networks:
+  frontend:
+    driver: bridge
+  backend:
+    driver: bridge
+    internal: true
+  admin:
+    driver: bridge
+  monitoring:
+    driver: bridge
+  alerts:
+    driver: bridge
+volumes:
+  postgres_data: null
+  pgadmin_data: null
+  prometheus_data: null
+  grafana_data: null
+  alertmanager_data: null
+  mailpit_data: null

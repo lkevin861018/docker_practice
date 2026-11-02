@@ -1,0 +1,22 @@
+{
+  "Servers": {
+    "1": {
+      "Name": "Docker Lab PostgreSQL",
+      "Group": "Docker Lab",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "labdb",
+      "Username": "labuser",
+      "SSLMode": "prefer"
+    },
+    "2": {
+      "Name": "Docker Lab Read Only",
+      "Group": "Docker Lab",
+      "Host": "db",
+      "Port": 5432,
+      "MaintenanceDB": "labdb",
+      "Username": "report_reader",
+      "SSLMode": "prefer"
+    }
+  }
+}

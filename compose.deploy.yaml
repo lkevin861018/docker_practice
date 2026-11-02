@@ -1,0 +1,7 @@
+# Deployment ONLY: merged with the existing compose.yaml.
+# Do not use locally without setting DEPLOY_IMAGE.
+# Pull the exact tested GHCR tag first; then deploy with --no-build.
+services:
+  app:
+    image: ${DEPLOY_IMAGE:?Set DEPLOY_IMAGE to a previously published GHCR image}
+    pull_policy: never

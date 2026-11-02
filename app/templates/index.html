@@ -1,0 +1,81 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Docker 三層式架構實作</title>
+  <style>
+    :root{color-scheme:light; font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
+    body{margin:0;background:#f4f7fb;color:#17253b;padding:40px 16px}
+    main{max-width:680px;margin:auto;background:white;border-radius:16px;padding:28px;box-shadow:0 8px 32px #142b4916}
+    h1{margin-top:0;font-size:1.55rem}
+    p{line-height:1.6;color:#506176}
+    .pill{display:inline-block;padding:6px 11px;border-radius:50px;background:#e7f4ec;color:#176534;font-size:.8rem}
+    form{display:flex;gap:8px;margin:24px 0}
+    input{flex:1;min-width:0;border:1px solid #cbd5e1;border-radius:8px;padding:12px;font-size:1rem}
+    button{background:#1666c7;border:0;color:white;border-radius:8px;padding:10px 17px;cursor:pointer}
+    button:disabled{opacity:.6;cursor:wait}
+    ul{padding-left:22px} li{padding:7px 0;border-bottom:1px solid #eef2f7}
+    small{color:#718096} #status{min-height:1.4rem}
+    code{background:#eef2f7;padding:2px 5px;border-radius:4px}
+  </style>
+</head>
+<body>
+  <main>
+    <span class="pill">Nginx → Flask → PostgreSQL</span>
+    <h1>🐳 Docker 三層式網站</h1>
+    <p>在下方輸入暱稱，資料會經由 Nginx 反向代理傳送至 Flask API，再存入 PostgreSQL。</p>
+    <form id="form">
+      <input id="visitor" maxlength="80" required placeholder="輸入測試暱稱" aria-label="測試暱稱">
+      <button id="submit" type="submit">寫入資料庫</button>
+    </form>
+    <p id="status" role="status"></p>
+    <h2>最近 20 筆資料</h2>
+    <ul id="items"></ul>
+    <p><small>健康檢查：<code>GET /healthz</code>　API：<code>GET /api/visits</code></small></p>
+  </main>
+  <script>
+    const form = document.getElementById('form');
+    const input = document.getElementById('visitor');
+    const status = document.getElementById('status');
+    const items = document.getElementById('items');
+    const button = document.getElementById('submit');
+    async function loadVisits() {
+      const response = await fetch('/api/visits');
+      if (!response.ok) throw new Error('無法取得資料');
+      const data = await response.json();
+      items.replaceChildren();
+      for (const item of data.items) {
+        const li = document.createElement('li');
+        // textContent prevents user-controlled input from being interpreted as HTML.
+        li.textContent = `#${item.id}　${item.visitor}　`;
+        const date = document.createElement('small');
+        date.textContent = new Date(item.created_at).toLocaleString('zh-TW');
+        li.append(date);
+        items.append(li);
+      }
+    }
+    form.addEventListener('submit', async (event) => {
+      event.preventDefault();
+      button.disabled = true;
+      status.textContent = '正在儲存...';
+      try {
+        const response = await fetch('/api/visits', {
+          method:'POST', headers:{'Content-Type':'application/json'},
+          body:JSON.stringify({visitor:input.value})
+        });
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || '儲存失敗');
+        input.value = '';
+        status.textContent = `寫入成功，ID：${data.id}`;
+        await loadVisits();
+      } catch (error) {
+        status.textContent = `錯誤：${error.message}`;
+      } finally {
+        button.disabled = false;
+      }
+    });
+    loadVisits().catch(e => { status.textContent = e.message; });
+  </script>
+</body>
+</html>

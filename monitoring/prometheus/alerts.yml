@@ -1,0 +1,35 @@
+groups:
+  - name: docker-lab
+    rules:
+      - alert: ScrapeTargetDown
+        expr: up{job=~"flask|nginx|postgres|prometheus|alertmanager"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "{{ $labels.job }} metrics endpoint unreachable"
+      - alert: WebProbeFailed
+        expr: probe_success{job="http-probe"} == 0
+        for: 1m
+        labels:
+          severity: warning
+        annotations:
+          summary: "HTTP endpoint unavailable: {{ $labels.instance }}"
+      - alert: FlaskHigh5xxRate
+        expr: |
+          (sum(rate(flask_http_requests_total{status=~"5.."}[5m])) or vector(0))
+            /
+          clamp_min(sum(rate(flask_http_requests_total[5m])), 0.01) > 0.10
+        for: 3m
+        labels:
+          severity: warning
+        annotations:
+          summary: "Flask 5xx error ratio > 10%"
+      - alert: PostgreSQLConnectionFailed
+        expr: pg_up{job="postgres"} == 0
+        for: 1m
+        labels:
+          severity: critical
+        annotations:
+          summary: "PostgreSQL exporter cannot connect to the database"
+          description: "Check metrics_reader credentials, database status, and postgres-exporter logs."
