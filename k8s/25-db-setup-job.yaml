@@ -13,8 +13,8 @@ spec:
       restartPolicy: Never
       containers:
         - name: role-setup
-          image: flask-k8s-lab:v1
-          imagePullPolicy: Never
+          image: ghcr.io/lkevin861018/docker_practice-flask-app:k8s-v1
+          imagePullPolicy: IfNotPresent
           command: ["python", "provision_roles.py"]
           env:
             - name: DB_HOST

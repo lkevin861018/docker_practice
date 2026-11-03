@@ -36,8 +36,8 @@ spec:
           type: RuntimeDefault
       containers:
         - name: flask
-          image: flask-k8s-lab:v1
-          imagePullPolicy: Never
+          image: ghcr.io/lkevin861018/docker_practice-flask-app:k8s-v1
+          imagePullPolicy: IfNotPresent
           ports:
             - containerPort: 8000
           env:
