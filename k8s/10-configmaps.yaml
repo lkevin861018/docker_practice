@@ -1,0 +1,28 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: nginx-config
+  namespace: docker-k8s-lab
+data:
+  default.conf: "server {\n    listen 80;\n    server_name _;\n    charset utf-8;\n\
+    \    client_max_body_size 16k;\n\n    # Never expose Flask's Prometheus metrics\
+    \ via the public-facing proxy.\n    location = /metrics { return 404; }\n\n  \
+    \  location / {\n        proxy_pass http://app:8000;\n        proxy_http_version\
+    \ 1.1;\n        proxy_set_header Host $host;\n        proxy_set_header X-Real-IP\
+    \ $remote_addr;\n        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;\n\
+    \        proxy_set_header X-Forwarded-Proto $scheme;\n        proxy_connect_timeout\
+    \ 5s;\n        proxy_read_timeout 30s;\n    }\n}\n\n# Internal-only port: no host\
+    \ port publishing; used by Nginx Exporter.\nserver {\n    listen 8081;\n    server_name\
+    \ _;\n    location = /stub_status {\n        stub_status;\n        access_log\
+    \ off;\n    }\n    location / { return 404; }\n}\n"
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: postgres-init
+  namespace: docker-k8s-lab
+data:
+  01-init.sql: "-- This file runs only during the FIRST initialization of an empty\
+    \ PostgreSQL volume.\nCREATE TABLE IF NOT EXISTS visits (\n    id BIGSERIAL PRIMARY\
+    \ KEY,\n    visitor VARCHAR(80) NOT NULL CHECK (length(btrim(visitor)) > 0),\n\
+    \    created_at TIMESTAMPTZ NOT NULL DEFAULT CURRENT_TIMESTAMP\n);\n"

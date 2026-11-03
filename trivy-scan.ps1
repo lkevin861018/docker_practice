@@ -1,4 +1,4 @@
-# Docker Lab v6: Trivy scan without mounting the Docker socket into the scanner.
+﻿# Docker Lab v6: Trivy scan without mounting the Docker socket into the scanner.
 # Windows PowerShell 5.1 / PowerShell 7. Requires Docker Desktop and network access for Trivy DB updates.
 [CmdletBinding()]
 param(
@@ -73,17 +73,27 @@ try {
                 --input "/scan/$archiveName" --format cyclonedx --output "/scan/$service-sbom.cdx.json"
             if ($LASTEXITCODE -ne 0) { throw "Trivy SBOM generation failed for $service" }
 
-            $report = Get-Content -LiteralPath (Join-Path $reportDir "$service-vulnerabilities.json") -Raw | ConvertFrom-Json
+            $reportPath = Join-Path $reportDir "$service-vulnerabilities.json"
+            $report = Get-Content -LiteralPath $reportPath -Raw | ConvertFrom-Json
             $high = 0
             $critical = 0
-            if ($null -ne $report.Results) {
-                foreach ($result in @($report.Results)) {
-                    if ($null -ne $result -and $null -ne $result.Vulnerabilities) {
-                        foreach ($v in @($result.Vulnerabilities)) {
-                            if ($null -ne $v) {
-                                if ($v.Severity -eq 'HIGH') { $high++ }
-                                if ($v.Severity -eq 'CRITICAL') { $critical++ }
-                            }
+
+            # Trivy omits optional JSON fields (including Vulnerabilities) when empty.
+            # Under Set-StrictMode, directly accessing a missing property throws.
+            $resultsField = $report.PSObject.Properties['Results']
+            if ($null -ne $resultsField -and $null -ne $resultsField.Value) {
+                foreach ($result in @($resultsField.Value)) {
+                    if ($null -eq $result) { continue }
+                    $vulnsField = $result.PSObject.Properties['Vulnerabilities']
+                    if ($null -eq $vulnsField -or $null -eq $vulnsField.Value) { continue }
+
+                    foreach ($v in @($vulnsField.Value)) {
+                        if ($null -eq $v) { continue }
+                        $severityField = $v.PSObject.Properties['Severity']
+                        if ($null -eq $severityField) { continue }
+                        switch ($severityField.Value) {
+                            'HIGH'     { $high++ }
+                            'CRITICAL' { $critical++ }
                         }
                     }
                 }

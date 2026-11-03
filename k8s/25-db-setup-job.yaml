@@ -1,0 +1,59 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: role-setup
+  namespace: docker-k8s-lab
+spec:
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: role-setup
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: role-setup
+          image: flask-k8s-lab:v1
+          imagePullPolicy: Never
+          command: ["python", "provision_roles.py"]
+          env:
+            - name: DB_HOST
+              value: db
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: labdb
+            - name: DB_ADMIN_USER
+              value: labuser
+            - name: APP_DB_USER
+              value: flask_app
+            - name: REPORT_DB_USER
+              value: report_reader
+            - name: METRICS_DB_USER
+              value: metrics_reader
+            - name: DB_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lab-db-secret
+                  key: DB_ADMIN_PASSWORD
+            - name: APP_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lab-db-secret
+                  key: APP_DB_PASSWORD
+            - name: REPORT_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lab-db-secret
+                  key: REPORT_DB_PASSWORD
+            - name: METRICS_DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: lab-db-secret
+                  key: METRICS_DB_PASSWORD
+          resources:
+            requests:
+              cpu: 50m
+              memory: 64Mi
+            limits:
+              memory: 256Mi

@@ -2,7 +2,7 @@
 # Run as a dedicated Ubuntu deploy user, after manual GitHub Environment approval.
 set -euo pipefail
 image="${1:?Supply GHCR image:SHA}"
-if ! [[ "$image" =~ ^ghcr\.io/[a-z0-9._/-]+/flask-app:[0-9a-f]{40}$ ]]; then
+if ! [[ "$image" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+-flask-app:[0-9a-f]{40}$ ]]; then
   echo 'ERROR: Invalid GHCR image reference' >&2
   exit 1
 fi
@@ -30,7 +30,7 @@ run_overlay() {
 
 rollback() {
   echo 'Deployment health check failed. Attempting app-only rollback.' >&2
-  if [ -n "$previous" ] && [[ "$previous" =~ ^ghcr\.io/[a-z0-9._/-]+/flask-app:[0-9a-f]{40}$ ]]; then
+  if [ -n "$previous" ] && [[ "$previous" =~ ^ghcr\.io/[a-z0-9._-]+/[a-z0-9._-]+-flask-app:[0-9a-f]{40}$ ]]; then
     run_overlay "$previous" || true
   else
     docker compose --env-file .env -f compose.yaml up -d --no-build --no-deps app || true

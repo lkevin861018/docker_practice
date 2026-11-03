@@ -47,7 +47,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          image="ghcr.io/${SOURCE_REPOSITORY,,}/flask-app:${IMAGE_SHA,,}"
+          image="ghcr.io/${SOURCE_REPOSITORY,,}-flask-app:${IMAGE_SHA,,}"
           # image contains only validated GitHub repository name and hexadecimal SHA.
           ssh -i "$HOME/.ssh/deploy_key" \
             -o BatchMode=yes -o StrictHostKeyChecking=yes \

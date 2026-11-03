@@ -19,3 +19,7 @@ ci-artifacts/
 .trivy-cache/
 .ci-last-good-image
 *.tar
+
+# Append to existing .gitignore (do NOT overwrite existing entries)
+caddy/Caddyfile
+caddy/*.log

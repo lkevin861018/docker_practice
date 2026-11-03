@@ -1,0 +1,32 @@
+# Use with: docker compose -f compose.yaml -f compose.funnel.yaml up -d
+services:
+  tailscale-funnel:
+    image: tailscale/tailscale:stable
+    restart: unless-stopped
+    network_mode: "service:nginx"
+    depends_on:
+      nginx:
+        condition: service_healthy
+    environment:
+      TS_AUTHKEY: ${TS_AUTHKEY:?Add TS_AUTHKEY to .env}
+      TS_STATE_DIR: /var/lib/tailscale
+      TS_SERVE_CONFIG: /config/serve.json
+      TS_HOSTNAME: docker-flask-funnel
+      TS_USERSPACE: "true"
+      TS_ACCEPT_DNS: "false"
+    volumes:
+      - tailscale_funnel_state:/var/lib/tailscale
+      - ./tailscale:/config:ro
+
+  funnel-auth:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    network_mode: "service:nginx"
+    depends_on:
+      nginx:
+        condition: service_healthy
+    volumes:
+      - ./tailscale/Caddyfile:/etc/caddy/Caddyfile:ro
+
+volumes:
+  tailscale_funnel_state:

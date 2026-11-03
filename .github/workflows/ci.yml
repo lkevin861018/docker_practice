@@ -8,7 +8,6 @@ on:
 
 permissions:
   contents: read
-  packages: write
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -90,17 +89,15 @@ jobs:
           if-no-files-found: warn
           retention-days: 14
 
-      - name: Publish EXACT scanned image to GHCR (only main)
+      - name: Stage verified image for publishing (main only)
         if: github.event_name == 'push' && github.ref == 'refs/heads/main'
-        env:
-          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -euo pipefail
-          image="ghcr.io/${GITHUB_REPOSITORY,,}/flask-app:${GITHUB_SHA}"
-          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
-          docker tag flask-nginx-postgres-lab-app:v6 "$image"
-          docker push "$image"
-          echo "Published: $image" >> "$GITHUB_STEP_SUMMARY"
+        uses: actions/upload-artifact@v4
+        with:
+          name: verified-image-${{ github.sha }}
+          path: ci-artifacts/flask-image.tar
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 1
 
       - name: Collect Docker diagnostics on failure
         if: failure()
@@ -111,3 +108,32 @@ jobs:
       - name: Cleanup temporary containers
         if: always()
         run: docker compose --env-file .env.ci down --remove-orphans || true
+
+  publish:
+    needs: build-test-scan-publish
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Download exact verified image
+        uses: actions/download-artifact@v4
+        with:
+          name: verified-image-${{ github.sha }}
+          path: ci-artifacts
+
+      - name: Load verified Docker archive
+        run: docker load -i ci-artifacts/flask-image.tar
+
+      - name: Publish SAME image to GHCR
+        env:
+          GHCR_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          image="ghcr.io/${GITHUB_REPOSITORY,,}-flask-app:${GITHUB_SHA}"
+          printf '%s' "$GHCR_TOKEN" | docker login ghcr.io -u "$GITHUB_ACTOR" --password-stdin
+          docker tag flask-nginx-postgres-lab-app:v6 "$image"
+          docker push "$image"
+          echo "Published: $image" >> "$GITHUB_STEP_SUMMARY"

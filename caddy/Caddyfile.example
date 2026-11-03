@@ -1,0 +1,24 @@
+# Copy this file to ./caddy/Caddyfile and replace REPLACE_WITH_BCRYPT_HASH
+# using: docker run --rm -it caddy:2.11.7-alpine caddy hash-password
+# This demo MUST require authentication because Flask's write API has no app-level auth.
+{$SITE_DOMAIN} {
+    encode zstd gzip
+
+    # Only apply after you have confirmed HTTPS works for your domain.
+    header {
+        Strict-Transport-Security "max-age=86400"
+        X-Content-Type-Options "nosniff"
+        Referrer-Policy "strict-origin-when-cross-origin"
+        X-Frame-Options "DENY"
+    }
+
+    basic_auth {
+        labuser REPLACE_WITH_BCRYPT_HASH
+    }
+
+    # defense in depth: never make metrics endpoints public
+    @internal path /metrics /stub_status
+    respond @internal 404
+
+    reverse_proxy nginx:80
+}

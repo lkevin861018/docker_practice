@@ -1,0 +1,13 @@
+:18080 {
+    # basic_auth {
+    #     labuser $2a$14$rgjqTA/Kv.wuy9gjVOGkX..mJ3urfVtQhZITq1rMeDUU71iGssnHK
+    # }
+    @block_write {
+        path /api/visits
+        method POST
+    }
+
+    respond @block_write "Forbidden" 403
+
+    reverse_proxy 127.0.0.1:80
+}

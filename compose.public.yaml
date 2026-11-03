@@ -1,0 +1,24 @@
+# v8 external HTTPS entrypoint; merge with existing v7 compose.yaml.
+# Never expose pgAdmin, Grafana, Prometheus or PostgreSQL to the internet.
+services:
+  caddy:
+    image: caddy:2.11.7-alpine
+    restart: unless-stopped
+    environment:
+      SITE_DOMAIN: ${SITE_DOMAIN:?Set SITE_DOMAIN in .env to your real DNS hostname}
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+    volumes:
+      - ./caddy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    networks:
+      - frontend
+    depends_on:
+      nginx:
+        condition: service_healthy
+
+volumes:
+  caddy_data:
+  caddy_config:

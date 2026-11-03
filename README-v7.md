@@ -3,7 +3,7 @@
 ## 目標與保護界線
 
 - PR / main push：Flask 單元測試 → PostgreSQL + Nginx 整合測試 → Trivy 高/重大弱點檢查 → CycloneDX SBOM。
-- **只有 main 的 push 且所有檢查通過時**，才發布「同一份已掃描映像檔」到 GitHub Container Registry（GHCR），名稱：`ghcr.io/<owner>/<repo>/flask-app:<40位Git SHA>`。
+- **只有 main 的 push 且所有檢查通過時**，才發布「同一份已掃描映像檔」到 GitHub Container Registry（GHCR），名稱：`ghcr.io/<owner>/<repo>-flask-app:<40位Git SHA>`。
 - Ubuntu 部署為**手動 workflow_dispatch**，並可在 `production` Environment 設定審核者。部署只更新 `app` 服務，不刪除 Volume、不執行 db-setup、不修改 PostgreSQL。
 - v7 的部署是假設 Ubuntu Server **事先已完整部署此專案**，包含 Docker Engine、Compose、`.env`、PostgreSQL role、`compose.yaml`、`compose.deploy.yaml`、`ci/deploy/remote-deploy.sh`。
 - 不會將 Windows 本機 Docker Desktop 的 Volume 自動複製至 Ubuntu。初次移轉資料需要獨立規劃備份及還原。
@@ -46,13 +46,13 @@ git push -u origin main
 
 ## 3. CI Workflow：.github/workflows/ci.yml
 
-觸發：`pull_request`、`push main`，或手動執行。採 GitHub-hosted `ubuntu-latest`；CI `.env.ci` 內全是隨機、短暫使用的測試密碼。CI 會在獨立的 runner 上建新 PostgreSQL 資料庫，不會觸及 Windows 的真實 Volume。
+觸發：`pull_request`、`push main`，或手動執行。採 GitHub-hosted `ubuntu-latest`；CI `.env.ci` 內全是隨機、短暫使用的測試密碼。`publish` 是獨立工作，僅它持有 `packages: write` 權限，並使用驗證工作上傳的**同一份映像檔 TAR**進行發布，避免重新建置造成版本漂移。CI 會在獨立的 runner 上建新 PostgreSQL 資料庫，不會觸及 Windows 的真實 Volume。
 
 若任一測試失敗，或掃描到 **HIGH / CRITICAL** CVE，流程失敗，**不發布**。報告會以 GitHub Actions Artifact 保存：`trivy-vulnerabilities.json`、`sbom.cdx.json`。
 
 Trivy 使用 `docker save` + `trivy image --input`，不需要把 Docker Socket 掛到 Trivy 容器。注意不同時期漏洞資料庫的變化會使結果不同。請優先修補，若需風險接受，應有核准期限與明確例外政策，不建議直接停用安全閘門。
 
-映像檔名稱依 repository 完整路徑產生，例如 `ghcr.io/example/docker-lab/flask-app:1234...40位字元`。GHCR 可能預設為 Private，部署機需有讀取權限。
+映像檔名稱依 repository 完整路徑產生，例如 `ghcr.io/example/docker-lab-flask-app:1234...40位字元`。GHCR 可能預設為 Private，部署機需有讀取權限。
 
 ## 4. Ubuntu Server 前置作業（首次手動一次）
 
